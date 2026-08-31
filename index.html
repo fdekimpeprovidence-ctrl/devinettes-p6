@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Devinettes — P6</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Devinettes P6">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117;--bg2:#161b22;--bg3:#21262d;
+  --border:#30363d;--border2:#444c56;
+  --text:#e6edf3;--text2:#8b949e;--text3:#656d76;
+  --accent:#4ECDC4;--gold:#FFD700;--red:#FF6B6B;--blue:#4D96FF;--purple:#C77DFF;
+  --radius:12px;--shadow:0 2px 8px rgba(0,0,0,.4);
+}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+/* sync */
+#syncBar{position:fixed;top:0;left:0;right:0;z-index:300;height:3px;background:var(--accent);transform:scaleX(0);transform-origin:left;transition:transform .4s,opacity .4s}
+#syncBar.active{transform:scaleX(1)}
+#syncBar.done{opacity:0}
+#syncStatus{position:fixed;bottom:16px;right:16px;font-size:12px;padding:6px 12px;border-radius:20px;background:var(--bg2);border:1px solid var(--border);color:var(--text2);box-shadow:var(--shadow);transition:all .3s;z-index:300;opacity:0;pointer-events:none}
+#syncStatus.show{opacity:1}
+#syncStatus.error{background:#1a0a0a;color:var(--red);border-color:#5a2020}
+
+/* loading */
+#loadingScreen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:999;transition:opacity .4s}
+#loadingScreen.hidden{opacity:0;pointer-events:none}
+.ldot{width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;animation:pulse 1.2s ease-in-out infinite}
+.ldot:nth-child(2){animation-delay:.2s}.ldot:nth-child(3){animation-delay:.4s}
+@keyframes pulse{0%,80%,100%{transform:scale(.6);opacity:.3}40%{transform:scale(1);opacity:1}}
+
+/* header */
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100}
+.header h1{font-family:'Fredoka One';font-size:18px;color:var(--accent);flex:1}
+.header-sub{font-size:11px;color:var(--text2)}
+
+/* tabs */
+.tabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--border);overflow-x:auto;padding:0 8px}
+.tab{padding:10px 14px;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;color:var(--text2);transition:all .15s;white-space:nowrap;font-family:'Fredoka One'}
+.tab.active{border-bottom-color:var(--accent);color:var(--accent)}
+.tab:hover:not(.active){color:var(--text)}
+
+/* views */
+.view{display:none;padding:14px 16px;max-width:700px}
+.view.active{display:block}
+
+/* buttons */
+.btn{font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;padding:8px 14px;border-radius:10px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .12s;white-space:nowrap}
+
+/* cards */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px}
+
+/* week selector */
+.week-bar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.week-num{font-family:'Fredoka One';font-size:20px;color:var(--accent)}
+.week-btn{background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:18px;width:34px;height:34px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .12s}
+.week-btn:hover{background:var(--border)}
+
+/* point row */
+.point-row{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border)}
+.point-row:last-child{border-bottom:none}
+.p-avatar{width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid var(--border2)}
+.p-avatar-empty{width:32px;height:32px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;border:2px solid var(--border)}
+.p-name{flex:1;font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.p-pts{font-family:'Fredoka One';font-size:19px;min-width:34px;text-align:center;cursor:text;border-radius:6px;padding:2px 4px;border:1px solid transparent;transition:border-color .12s}
+.p-pts:hover{border-color:rgba(78,205,196,.4)}
+.pm-btn{width:30px;height:30px;border-radius:8px;border:none;cursor:pointer;font-size:16px;font-weight:800;display:flex;align-items:center;justify-content:center;transition:all .12s}
+.pm-minus{background:rgba(255,107,107,.2);color:var(--red)}
+.pm-plus{background:rgba(78,205,196,.2);color:var(--accent)}
+.pm-btn:hover{filter:brightness(1.3)}
+@keyframes pop{0%{transform:scale(1)}50%{transform:scale(1.25)}100%{transform:scale(1)}}
+.pop{animation:pop .3s ease}
+
+/* podium */
+.podium-wrap{display:flex;justify-content:center;align-items:flex-end;gap:10px;margin:20px 8px}
+.podium-col{flex:1;display:flex;flex-direction:column;align-items:center;max-width:110px}
+.podium-bar{width:100%;display:flex;align-items:center;justify-content:center;border-radius:8px 8px 0 0;margin-top:8px}
+
+/* classement table */
+.rank-table{width:100%;border-collapse:collapse}
+.rank-table td{padding:8px 10px;border-bottom:1px solid var(--border)}
+.rank-table tr:last-child td{border-bottom:none}
+.rank-table tr:hover td{background:rgba(255,255,255,.02)}
+
+/* bilan */
+.bilan-box{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:14px;margin-top:12px;font-size:13px;line-height:1.7;color:var(--text)}
+.bilan-btn{background:rgba(78,205,196,.2);color:var(--accent);border:1px solid rgba(78,205,196,.4);font-family:'Fredoka One';font-size:14px;padding:12px 16px;border-radius:10px;cursor:pointer;width:100%;text-align:left;margin-bottom:8px;transition:background .12s}
+.bilan-btn:hover{background:rgba(78,205,196,.3)}
+
+/* gestion */
+.gest-section{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px}
+.gest-title{font-family:'Fredoka One';font-size:14px;margin-bottom:10px}
+
+/* toast */
+#toast{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:10px 18px;border-radius:20px;font-size:13px;font-weight:600;z-index:500;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1}
+
+/* print preview modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:400;align-items:center;justify-content:center;padding:16px}
+.modal-overlay.open{display:flex}
+.modal-box{background:var(--bg2);border-radius:14px;width:100%;max-width:560px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column}
+.modal-head{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.modal-close{background:var(--bg3);border:none;color:var(--text2);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+
+@media(max-width:500px){.podium-col{max-width:90px}}
+</style>
+</head>
+<body>
+
+<div id="loadingScreen">
+  <div style="font-family:'Fredoka One';font-size:18px;color:var(--accent)">Devinettes P6</div>
+  <div style="display:flex;gap:8px"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>
+  <div style="font-size:12px;color:var(--text2)">Connexion à Firebase…</div>
+</div>
+
+<div id="syncBar"></div>
+<div id="syncStatus"></div>
+<div id="toast"></div>
+
+<div class="header">
+  <div>
+    <h1>🎩 Devinettes P6</h1>
+    <div class="header-sub">École La Providence</div>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('semaine')">📅 Semaine</div>
+  <div class="tab" onclick="switchTab('podium')">🏆 Podium</div>
+  <div class="tab" onclick="switchTab('classement')">📊 Classement</div>
+  <div class="tab" onclick="switchTab('gerer')">⚙️ Gérer</div>
+</div>
+
+<div id="view-semaine" class="view active">
+  <div class="week-bar">
+    <button class="week-btn" onclick="prevWeek()">‹</button>
+    <div style="flex:1;text-align:center">
+      <div class="week-num" id="weekLabel">Semaine 7</div>
+      <div style="font-size:11px;color:var(--text2)">Touche + / − ou tape directement</div>
+    </div>
+    <button class="week-btn" onclick="nextWeek()">›</button>
+    <button class="btn" onclick="addWeek()" style="background:rgba(78,205,196,.2);color:var(--accent);border:1px solid rgba(78,205,196,.4)">+ Sem.</button>
+  </div>
+  <div class="card" id="pointsList"></div>
+  <div style="margin-top:14px">
+    <button class="bilan-btn" onclick="generateBilan()">✨ Générer le bilan de la semaine</button>
+    <div id="bilanBox" style="display:none"></div>
+  </div>
+</div>
+
+<div id="view-podium" class="view">
+  <div id="podiumContent"></div>
+</div>
+
+<div id="view-classement" class="view">
+  <div id="classementContent"></div>
+</div>
+
+<div id="view-gerer" class="view">
+  <div class="gest-section" style="border-color:rgba(78,205,196,.3);background:rgba(78,205,196,.04)">
+    <div class="gest-title" style="color:var(--accent)">💾 Sauvegarde</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn" onclick="exportData()" style="background:rgba(78,205,196,.2);color:var(--accent);border:1px solid rgba(78,205,196,.4)">📋 Exporter / Copier</button>
+      <button class="btn" onclick="importFile()" style="background:rgba(255,230,109,.15);color:#FFE66D;border:1px solid rgba(255,230,109,.35)">⬆️ Importer un fichier</button>
+      <button class="btn" onclick="importText()" style="background:rgba(255,230,109,.08);color:#FFE66D;border:1px solid rgba(255,230,109,.2)">📋 Coller une sauvegarde</button>
+    </div>
+  </div>
+
+  <div class="gest-section" style="border-color:rgba(77,150,255,.25);background:rgba(77,150,255,.04)">
+    <div class="gest-title" style="color:var(--blue)">🖨️ Aperçu imprimable</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn" onclick="printClassement()" style="background:rgba(77,150,255,.2);color:var(--blue);border:1px solid rgba(77,150,255,.4)">📄 Classement complet</button>
+      <button class="btn" onclick="printPodium()" style="background:rgba(255,215,0,.15);color:var(--gold);border:1px solid rgba(255,215,0,.35)">🏆 Podium + bilan</button>
+    </div>
+  </div>
+
+  <div class="gest-section">
+    <div class="gest-title" style="color:var(--accent)">➕ Ajouter un élève</div>
+    <div style="display:flex;gap:8px">
+      <input type="text" id="newNameInput" placeholder="Prénom…" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px" onkeydown="if(event.key==='Enter')addChild()">
+      <button class="btn" onclick="addChild()" style="background:var(--accent);color:var(--bg);border:none">Ajouter</button>
+    </div>
+  </div>
+
+  <div class="gest-section">
+    <div class="gest-title" style="color:var(--text2)" id="childCount">27 élèves · Touche 📷 pour photo</div>
+    <div id="childList"></div>
+  </div>
+
+  <div class="gest-section" style="border-color:rgba(255,107,107,.2);background:rgba(255,107,107,.04)">
+    <div class="gest-title" style="color:var(--text2)">⚠️ Zone dangereuse</div>
+    <button class="btn" onclick="resetAll()" style="background:rgba(255,107,107,.2);color:var(--red);border:1px solid rgba(255,107,107,.3)">🗑️ Réinitialiser tout</button>
+  </div>
+</div>
+
+<!-- Print modal -->
+<div class="modal-overlay" id="printModal" onclick="closePrintModal(event)">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span id="printTitle" style="font-weight:600;font-size:14px"></span>
+      <button class="modal-close" onclick="document.getElementById('printModal').classList.remove('open')">✕</button>
+    </div>
+    <iframe id="printFrame" style="flex:1;border:none;background:#fff"></iframe>
+  </div>
+</div>
+
+<input type="file" id="importFileInput" accept=".json" style="display:none" onchange="handleImportFile(event)">
+
+<!-- Firebase -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDw1fFgaqxY34NkQSAFEWaKtiUBwx5c5z0",
+  authDomain: "comportement-p5.firebaseapp.com",
+  projectId: "comportement-p5",
+  storageBucket: "comportement-p5.firebasestorage.app",
+  messagingSenderId: "497890745059",
+  appId: "1:497890745059:web:1c5ec4f06c6537d7bb83d6"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+const DOC_REF = doc(db, "ecole", "devinettes_p6");
+
+// ── Données initiales (semaine 7, points préservés) ──
+const INITIAL_DATA = {
+  weekCount: 1,
+  currentWeek: 1,
+  bilans: {},
+  children: [
+    {id:1,name:"Adam",photo:null,startOffset:0,weeklyPoints:{}},
+    {id:2,name:"Alyia",photo:null,startOffset:0,weeklyPoints:{}},
+    {id:3,name:"Bryan",photo:null,startOffset:0,weeklyPoints:{}},
+    {id:4,name:"Dua",photo:null,startOffset:0,weeklyPoints:{}},
+    {id:5,name:"Ismaël",photo:null,startOffset:0,weeklyPoints:{}},
+    {id:7,name:"Laura",photo:null,startOffset:0,weeklyPoints:{}},
+    {id:8,name:"Malik",photo:null,startOffset:0,weeklyPoints:{}},
+    {id:9,name:"Maria",photo:null,startOffset:0,weeklyPoints:{}},
+    {id:10,name:"Nael",photo:null,startOffset:0,weeklyPoints:{}},
+    {id:11,name:"Noah",photo:null,startOffset:0,weeklyPoints:{}},
+    {id:12,name:"Salimatou",photo:null,startOffset:0,weeklyPoints:{}},
+    {id:13,name:"Toby",photo:null,startOffset:0,weeklyPoints:{}},
+    {id:14,name:"Victoria",photo:null,startOffset:0,weeklyPoints:{}},
+    {id:15,name:"Wissam",photo:null,startOffset:0,weeklyPoints:{}}
+  ]
+};
+
+let st = null;
+let curWeek = 7;
+let saveTimer = null;
+let ignoreSnap = false;
+const WEEK_COLORS = ["#FF6B6B","#4ECDC4","#FFE66D","#A8E6CF","#FF8B94","#B4A7D6","#F8B500","#6BCB77","#4D96FF","#FF6B9D","#C77DFF","#48CAE4","#F4A261"];
+
+// helpers
+const getTotal = (c, w) => { let t=c.startOffset||0; for(let i=1;i<=w;i++) t+=(c.weeklyPoints[i]||0); return t; };
+const getTotalAll = c => getTotal(c, st.weekCount);
+const getWeekPts = (c, w) => c.weeklyPoints[w]||0;
+const weekColor = w => WEEK_COLORS[(w-1)%WEEK_COLORS.length];
+const ranked = () => [...st.children].map(c=>({...c,total:getTotalAll(c)})).sort((a,b)=>b.total-a.total);
+
+// sync
+async function loadFromFirebase() {
+  try {
+    const snap = await getDoc(DOC_REF);
+    if (snap.exists()) {
+      st = snap.data();
+    } else {
+      // Première fois : charge les données initiales avec les points
+      st = INITIAL_DATA;
+      await setDoc(DOC_REF, st);
+    }
+    curWeek = st.currentWeek || st.weekCount;
+    showSync("✓ Synchronisé", false);
+  } catch(e) {
+    showSync("⚠ Hors ligne", true);
+    const local = localStorage.getItem("devinettes_p6_backup");
+    if (local) { try { st = JSON.parse(local); curWeek = st.currentWeek||st.weekCount; } catch {} }
+    if (!st) st = INITIAL_DATA;
+  }
+  document.getElementById('loadingScreen').classList.add('hidden');
+  render();
+}
+
+onSnapshot(DOC_REF, snap => {
+  if (ignoreSnap) return;
+  if (snap.exists()) {
+    st = snap.data();
+    curWeek = st.currentWeek || st.weekCount;
+    render();
+    showSync("✓ Mis à jour", false);
+  }
+}, () => showSync("⚠ Hors ligne", true));
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveToFirebase, 1000);
+}
+
+async function saveToFirebase() {
+  ignoreSnap = true;
+  showSyncBar();
+  st.currentWeek = curWeek;
+  try {
+    localStorage.setItem("devinettes_p6_backup", JSON.stringify(st));
+    await setDoc(DOC_REF, st);
+    showSync("✓ Sauvegardé", false);
+  } catch(e) {
+    showSync("⚠ Erreur", true);
+    localStorage.setItem("devinettes_p6_backup", JSON.stringify(st));
+  }
+  setTimeout(() => ignoreSnap = false, 2000);
+}
+
+function showSyncBar() {
+  const b = document.getElementById('syncBar');
+  b.classList.remove('done'); b.classList.add('active');
+  setTimeout(() => { b.classList.add('done'); setTimeout(() => b.classList.remove('active','done'), 400); }, 800);
+}
+function showSync(msg, err) {
+  const el = document.getElementById('syncStatus');
+  el.textContent = msg; el.className = 'show'+(err?' error':'');
+  clearTimeout(el._t); el._t = setTimeout(() => el.className='', 3000);
+}
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'show';
+  clearTimeout(t._t); t._t = setTimeout(() => t.className='', 3000);
+}
+
+// ── Tabs ──
+window.switchTab = function(t) {
+  document.querySelectorAll('.tab').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  const tabs = ['semaine','podium','classement','gerer'];
+  document.querySelectorAll('.tab')[tabs.indexOf(t)].classList.add('active');
+  document.getElementById('view-'+t).classList.add('active');
+  if(t==='podium') renderPodium();
+  if(t==='classement') renderClassement();
+  if(t==='gerer') renderGestion();
+}
+
+// ── Render ──
+function render() {
+  renderSemaine();
+  const activeTab = document.querySelector('.tab.active')?.dataset?.tab;
+  if (document.getElementById('view-podium').classList.contains('active')) renderPodium();
+  if (document.getElementById('view-classement').classList.contains('active')) renderClassement();
+  if (document.getElementById('view-gerer').classList.contains('active')) renderGestion();
+}
+
+function renderSemaine() {
+  const col = weekColor(curWeek);
+  document.getElementById('weekLabel').innerHTML = `<span style="color:${col}">Semaine ${curWeek}</span>`;
+  const sorted = [...st.children].sort((a,b)=>a.name.localeCompare(b.name,'fr'));
+  const list = document.getElementById('pointsList');
+  list.innerHTML = sorted.map(child => {
+    const pts = getWeekPts(child, curWeek);
+    const av = child.photo
+      ? `<img src="${child.photo}" class="p-avatar" style="border-color:${pts>0?col:'var(--border2)'}">`
+      : `<div class="p-avatar-empty">👤</div>`;
+    return `<div class="point-row" id="pr_${child.id}">
+      ${av}
+      <div class="p-name">${child.name}</div>
+      <button class="pm-btn pm-minus" onclick="removePt(${child.id})">−</button>
+      <div class="p-pts" id="pts_${child.id}" style="color:${pts>0?col:'var(--text2)'}" onclick="editPts(${child.id})">${pts}</div>
+      <button class="pm-btn pm-plus" onclick="addPt(${child.id})">+</button>
+    </div>`;
+  }).join('');
+}
+
+function renderPodium() {
+  const r = ranked();
+  const top3 = r.slice(0,3);
+  const display = [top3[1], top3[0], top3[2]];
+  const medals = ["🥈","🥇","🥉"];
+  const colors = ["#C0C0C0","#FFD700","#CD7F32"];
+  const heights = [90, 135, 70];
+  const sizes = [64, 88, 54];
+
+  let html = `<div style="text-align:center;font-family:'Fredoka One';font-size:22px;color:var(--gold);margin-bottom:4px">🏆 Podium</div>
+    <div style="text-align:center;font-size:11px;color:var(--text2);margin-bottom:24px">Classement général · tous points cumulés</div>
+    <div class="podium-wrap">`;
+
+  display.forEach((child, i) => {
+    if(!child){ html+=`<div style="flex:1"></div>`; return; }
+    const col = colors[i], sz = sizes[i];
+    const av = child.photo
+      ? `<img src="${child.photo}" style="width:${sz}px;height:${sz}px;border-radius:50%;object-fit:cover;border:3px solid ${col};box-shadow:0 0 20px ${col}60">`
+      : `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:var(--bg3);border:3px solid ${col};display:flex;align-items:center;justify-content:center;font-size:${sz*.4}px;box-shadow:0 0 20px ${col}60">👤</div>`;
+    html += `<div class="podium-col">
+      <div style="position:relative;margin-bottom:6px">${av}<div style="position:absolute;bottom:-4px;right:-2px;font-size:${i===1?20:16}px">${medals[i]}</div></div>
+      <div style="font-weight:800;font-size:${i===1?14:12}px;text-align:center;margin-bottom:2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${child.name}</div>
+      <div style="font-family:'Fredoka One';font-size:${i===1?20:15}px;color:${col}">${child.total}</div>
+      <div style="font-size:10px;color:var(--text2);margin-bottom:6px">pts</div>
+      <div class="podium-bar" style="height:${heights[i]}px;background:linear-gradient(to top,${col}35,${col}10);border:1px solid ${col}40">
+        <span style="font-family:'Fredoka One';font-size:28px;color:${col}50">${[2,1,3][i]}</span>
+      </div>
+    </div>`;
+  });
+  html += `</div>`;
+
+  // Suite du classement
+  if(r.length > 3) {
+    html += `<div style="font-family:'Fredoka One';font-size:13px;color:var(--text2);margin:0 0 8px">Suite du classement</div>`;
+    r.slice(3).forEach((child, i) => {
+      const av = child.photo
+        ? `<img src="${child.photo}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid var(--border2)">`
+        : `<div style="width:36px;height:36px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:14px;border:2px solid var(--border)">👤</div>`;
+      html += `<div class="card" style="display:flex;align-items:center;gap:10px;padding:10px 12px;margin-bottom:6px">
+        <div style="font-family:'Fredoka One';font-size:14px;color:var(--text2);min-width:22px">${i+4}</div>
+        ${av}
+        <div style="flex:1;font-weight:700;font-size:14px">${child.name}</div>
+        <div style="font-family:'Fredoka One';font-size:18px;color:var(--accent)">${child.total}</div>
+      </div>`;
+    });
+  }
+  document.getElementById('podiumContent').innerHTML = html;
+}
+
+function renderClassement() {
+  const r = ranked();
+  const medals = ["🥇","🥈","🥉"];
+  const wHeaders = Array.from({length:st.weekCount},(_,i)=>`<th style="text-align:center;padding:7px 4px;background:var(--bg3);color:${weekColor(i+1)};font-size:11px;font-family:'Fredoka One'">S${i+1}</th>`).join('');
+
+  let html = `<div style="overflow-x:auto"><table class="rank-table">
+    <thead><tr>
+      <th style="padding:8px 10px;background:var(--bg3);text-align:left;font-size:12px;color:var(--text2)">Élève</th>
+      ${wHeaders}
+      <th style="text-align:center;padding:7px 8px;background:var(--bg3);color:var(--accent);font-size:12px;font-family:'Fredoka One'">Total</th>
+    </tr></thead><tbody>`;
+
+  r.forEach((child, i) => {
+    const col = i<3 ? ["#FFD700","#C0C0C0","#CD7F32"][i] : "var(--accent)";
+    const av = child.photo
+      ? `<img src="${child.photo}" style="width:22px;height:22px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:6px">`
+      : '';
+    const wCells = Array.from({length:st.weekCount},(_,w)=>{
+      const v = child.weeklyPoints[w+1]||0;
+      return `<td style="text-align:center;font-family:'Fredoka One';font-size:14px;color:${v>0?weekColor(w+1):'var(--text3)'}">${v||'—'}</td>`;
+    }).join('');
+    html += `<tr>
+      <td style="padding:8px 10px"><span style="font-size:12px;color:var(--text2);margin-right:4px">${medals[i]||i+1+'.'}</span>${av}<span style="font-weight:700;font-size:13px">${child.name}</span></td>
+      ${wCells}
+      <td style="text-align:center;font-family:'Fredoka One';font-size:16px;color:${col};font-weight:900">${child.total}</td>
+    </tr>`;
+  });
+  html += `</tbody></table></div>`;
+  document.getElementById('classementContent').innerHTML = html;
+}
+
+function renderGestion() {
+  document.getElementById('childCount').textContent = `${st.children.length} élèves · Touche 📷 pour photo`;
+  const sorted = [...st.children].sort((a,b)=>a.name.localeCompare(b.name,'fr'));
+  document.getElementById('childList').innerHTML = sorted.map(child => {
+    const av = child.photo
+      ? `<img src="${child.photo}" style="width:46px;height:46px;border-radius:50%;object-fit:cover;border:2px solid var(--accent);cursor:pointer" onclick="triggerPhoto(${child.id})">`
+      : `<div style="width:46px;height:46px;border-radius:50%;background:var(--bg3);border:2px dashed var(--border2);display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer" onclick="triggerPhoto(${child.id})">📷</div>`;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="position:relative;flex-shrink:0">
+        ${av}
+        <input type="file" accept="image/*" id="photo_${child.id}" style="display:none" onchange="handlePhoto(${child.id},event)">
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:14px">${child.name}</div>
+        <div style="font-size:11px;color:var(--text2)">${getTotalAll(child)} pts · ${child.photo?'✅ Photo':'Pas de photo'}</div>
+      </div>
+      <button onclick="removeChild(${child.id})" style="background:rgba(255,107,107,.12);color:var(--red);border:1px solid rgba(255,107,107,.25);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px;font-weight:700">Retirer</button>
+    </div>`;
+  }).join('');
+}
+
+// ── Actions points ──
+window.addPt = function(id) {
+  const c = st.children.find(c=>c.id===id); if(!c) return;
+  c.weeklyPoints = {...c.weeklyPoints, [curWeek]:(c.weeklyPoints[curWeek]||0)+1};
+  const el = document.getElementById('pts_'+id);
+  if(el){ el.textContent = c.weeklyPoints[curWeek]; el.style.color = weekColor(curWeek); el.classList.add('pop'); setTimeout(()=>el.classList.remove('pop'),350); }
+  scheduleSave();
+}
+window.removePt = function(id) {
+  const c = st.children.find(c=>c.id===id); if(!c) return;
+  c.weeklyPoints = {...c.weeklyPoints, [curWeek]:Math.max(0,(c.weeklyPoints[curWeek]||0)-1)};
+  const el = document.getElementById('pts_'+id);
+  if(el){ el.textContent = c.weeklyPoints[curWeek]; el.style.color = c.weeklyPoints[curWeek]>0?weekColor(curWeek):'var(--text2)'; }
+  scheduleSave();
+}
+window.editPts = function(id) {
+  const c = st.children.find(c=>c.id===id); if(!c) return;
+  const el = document.getElementById('pts_'+id); if(!el) return;
+  const inp = document.createElement('input');
+  inp.type='number'; inp.min='0'; inp.value=c.weeklyPoints[curWeek]||0;
+  inp.style.cssText=`width:50px;text-align:center;font-family:'Fredoka One';font-size:18px;background:var(--bg);border:1px solid ${weekColor(curWeek)};border-radius:8px;color:${weekColor(curWeek)};padding:2px 4px`;
+  el.replaceWith(inp); inp.select();
+  const commit = () => {
+    const n = Math.max(0, parseInt(inp.value)||0);
+    c.weeklyPoints = {...c.weeklyPoints, [curWeek]:n};
+    const newEl = document.createElement('div');
+    newEl.className='p-pts'; newEl.id='pts_'+id;
+    newEl.textContent=n; newEl.style.color=n>0?weekColor(curWeek):'var(--text2)';
+    newEl.onclick=()=>editPts(id);
+    inp.replaceWith(newEl); scheduleSave();
+  };
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', e=>{ if(e.key==='Enter') commit(); if(e.key==='Escape') commit(); });
+}
+
+// ── Semaines ──
+window.prevWeek = function() { if(curWeek>1){ curWeek--; renderSemaine(); } }
+window.nextWeek = function() { if(curWeek<st.weekCount){ curWeek++; renderSemaine(); } }
+window.addWeek = async function() {
+  const semFinie = curWeek;
+  if(!confirm(`Clôturer la semaine ${semFinie} et démarrer la semaine ${semFinie+1} ?\nLes bonus comportement seront calculés automatiquement.`)) return;
+
+  // Calcule les bonus comportement (paliers de 3)
+  const DOC_COMPORT = doc(db, "ecole", "comportement_p6");
+  let bonusLog = [];
+  try {
+    const snap = await getDoc(DOC_COMPORT);
+    if(snap.exists()) {
+      const comport = snap.data();
+      if(!comport.points) comport.points = {};
+      // Trimestre actif (T3 par défaut)
+      const curT = comport.currentTrimestre || "T1";
+
+      st.children.forEach(child => {
+        const pts = getWeekPts(child, semFinie);
+        const bonus = Math.floor(pts / 3);
+        if(bonus > 0) {
+          // Crédite les points comportement
+          comport.points[child.name] = (comport.points[child.name] || 0) + bonus;
+          // Ajoute dans l'historique si l'élève existe
+          if(comport.tr?.[curT]?.[child.name]) {
+            if(!comport.tr[curT][child.name].hist) comport.tr[curT][child.name].hist = [];
+            comport.tr[curT][child.name].hist.push({
+              date: new Date().toLocaleDateString('fr-BE',{day:'2-digit',month:'2-digit',year:'numeric'}),
+              label: `⭐ +${bonus} pt bonus devinettes (sem. ${semFinie} : ${pts} pts → ÷3)`,
+              type: 'pts',
+              delta: bonus
+            });
+          }
+          bonusLog.push(`${child.name} : +${bonus} pt${bonus>1?'s':''} (${pts} pts devinettes)`);
+        }
+      });
+      await setDoc(DOC_COMPORT, comport);
+    }
+  } catch(e) {
+    showToast('⚠ Bonus non envoyés — hors ligne');
+  }
+
+  // Passe à la semaine suivante
+  st.weekCount++; curWeek = st.weekCount;
+  renderSemaine(); scheduleSave();
+
+  // Résumé des bonus
+  if(bonusLog.length > 0) {
+    alert(`✅ Semaine ${semFinie} clôturée !\n\nBonus comportement attribués :\n${bonusLog.join('\n')}`);
+  } else {
+    showToast(`Semaine ${st.weekCount} démarrée !`);
+  }
+}
+
+// ── Bilan ──
+window.generateBilan = async function() {
+  const box = document.getElementById('bilanBox');
+  box.style.display='block';
+  box.innerHTML = `<div class="bilan-box">⏳ Génération en cours…</div>`;
+
+  const weekData = st.children.map(c=>({name:c.name,added:getWeekPts(c,curWeek),total:getTotalAll(c)})).sort((a,b)=>b.added-a.added);
+  const topWeek = weekData.filter(x=>x.added>0).slice(0,5);
+  const zero = weekData.filter(x=>x.added===0).map(x=>x.name);
+  const top3 = ranked().slice(0,3).map((c,i)=>(i+1)+'. '+c.name+' ('+c.total+' pts)');
+  const prompt = `Tu es un enseignant bienveillant. Rédige un bilan de la semaine ${curWeek} du jeu de devinettes en 5-6 phrases.\nPoints gagnés : ${topWeek.length>0?topWeek.map(x=>x.name+' (+'+x.added+')').join(', '):'personne'}\nSans point : ${zero.slice(0,5).join(', ')||'aucun'}\nTop 3 général : ${top3.join(', ')}\nMentionne des prénoms, encourage tout le monde, quelques emojis. Réponds directement.`;
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1024,messages:[{role:"user",content:prompt}]})
+    });
+    const data = await res.json();
+    if(data.error){ box.innerHTML=`<div class="bilan-box" style="color:var(--red)">⚠ ${data.error.message||'Erreur'}</div>`; return; }
+    const text = data.content?.[0]?.text || '';
+    if(!st.bilans) st.bilans={};
+    st.bilans[curWeek] = text;
+    box.innerHTML = `<div class="bilan-box">${text}</div>`;
+    scheduleSave();
+  } catch(e) {
+    box.innerHTML=`<div class="bilan-box" style="color:var(--red)">⚠ Erreur réseau. Réessaie.</div>`;
+  }
+}
+
+// ── Gestion enfants ──
+window.triggerPhoto = function(id) { document.getElementById('photo_'+id)?.click(); }
+window.handlePhoto = function(id, e) {
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const c = st.children.find(c=>c.id===id); if(!c) return;
+    c.photo = ev.target.result;
+    scheduleSave(); renderGestion(); showToast('Photo enregistrée !');
+  };
+  reader.readAsDataURL(file);
+}
+window.addChild = function() {
+  const inp = document.getElementById('newNameInput');
+  const name = inp.value.trim(); if(!name) return;
+  st.children.push({id:Date.now(),name,photo:null,startOffset:0,weeklyPoints:{}});
+  inp.value=''; scheduleSave(); renderGestion(); renderSemaine(); showToast(`${name} ajouté !`);
+}
+window.removeChild = function(id) {
+  if(!confirm('Retirer cet élève ?')) return;
+  st.children = st.children.filter(c=>c.id!==id);
+  scheduleSave(); renderGestion(); renderSemaine();
+}
+window.resetAll = function() {
+  if(!confirm('Réinitialiser TOUS les scores ?')) return;
+  st.children = st.children.map(c=>({...c,weeklyPoints:{},startOffset:0}));
+  st.weekCount=1; curWeek=1; st.bilans={};
+  scheduleSave(); render(); showToast('Tout réinitialisé !');
+}
+
+// ── Export / Import ──
+window.exportData = function() {
+  const json = JSON.stringify({children:st.children,weekCount:st.weekCount,bilans:st.bilans,exportedAt:new Date().toISOString()},null,2);
+  try {
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([json],{type:'application/json'}));
+    a.download=`devinettes_5P_S${curWeek}_${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  } catch{}
+  if(navigator.clipboard) {
+    navigator.clipboard.writeText(json).then(()=>showToast('📋 Copié dans le presse-papiers !')).catch(()=>showExportModal(json));
+  } else { showExportModal(json); }
+}
+function showExportModal(json) {
+  const div=document.createElement('div');
+  div.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px';
+  div.innerHTML=`<div style="background:var(--bg2);border-radius:12px;padding:20px;width:100%;max-width:500px;max-height:80vh;display:flex;flex-direction:column;gap:12px">
+    <div style="font-weight:600;font-size:15px">💾 Exporter</div>
+    <textarea readonly style="flex:1;min-height:200px;font-size:11px;font-family:monospace;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--accent);resize:none" onclick="this.select()">${json}</textarea>
+    <div style="display:flex;gap:8px">
+      <button onclick="this.closest('div[style]').remove()" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--bg3);color:var(--text);font-size:13px;cursor:pointer">Fermer</button>
+      <button onclick="navigator.clipboard.writeText(this.parentElement.previousElementSibling.value).then(()=>showToast('Copié !'))" style="flex:1;padding:10px;border:none;border-radius:7px;background:var(--accent);color:var(--bg);font-size:13px;cursor:pointer;font-weight:600">📋 Copier</button>
+    </div>
+  </div>`;
+  document.body.appendChild(div);
+}
+window.importFile = function() { document.getElementById('importFileInput').click(); }
+window.handleImportFile = function(e) {
+  const file=e.target.files[0]; if(!file) return;
+  const r=new FileReader();
+  r.onload=ev=>{ try{ applyImport(JSON.parse(ev.target.result)); }catch{ showToast('Fichier invalide !'); } };
+  r.readAsText(file); e.target.value='';
+}
+window.importText = function() {
+  const text=prompt('Colle le JSON de sauvegarde ici :');
+  if(!text) return;
+  try{ applyImport(JSON.parse(text)); }catch{ showToast('Texte invalide !'); }
+}
+function applyImport(data) {
+  if(!data.children||!data.weekCount){ showToast('Données invalides !'); return; }
+  st.children=data.children; st.weekCount=data.weekCount; curWeek=data.weekCount;
+  if(data.bilans) st.bilans=data.bilans;
+  saveToFirebase(); render(); showToast('Import réussi !');
+}
+
+// ── Print ──
+window.printClassement = function() {
+  const r = ranked();
+  const medals=["🥇","🥈","🥉"];
+  const wh=Array.from({length:st.weekCount},(_,i)=>`<th style="text-align:center;background:#1a73e8;color:#fff;font-size:12px;font-weight:800;padding:7px 4px">S${i+1}</th>`).join('');
+  const rows=r.map((c,i)=>{
+    const wc=Array.from({length:st.weekCount},(_,w)=>`<td style="text-align:center;font-size:13px;color:${(c.weeklyPoints[w+1]||0)>0?'#1a73e8':'#ccc'};font-weight:700;padding:6px 4px">${c.weeklyPoints[w+1]||0}</td>`).join('');
+    return `<tr style="background:${i%2===0?'#f0f4ff':'#fff'}"><td style="padding:8px 10px;font-weight:800;font-size:13px">${medals[i]||i+1+'.'} ${c.name}</td>${wc}<td style="text-align:center;font-weight:900;font-size:16px;color:#1a73e8;padding:6px 8px">${c.total}</td></tr>`;
+  }).join('');
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;padding:16px;background:#fff}h1{text-align:center;color:#1a73e8;font-size:22px;margin:0 0 4px;font-weight:900}.sub{text-align:center;color:#888;font-size:12px;margin:0 0 14px}table{width:100%;border-collapse:collapse;border:2px solid #1a73e8}thead tr{background:#1a73e8}th:first-child,th:last-child{text-align:left;padding:8px 10px;color:#fff;font-size:13px}td{border-bottom:1px solid #e8eaf6}tr:last-child td{border-bottom:none}</style></head><body><h1>🎩 Classement Devinettes</h1><p class="sub">${new Date().toLocaleDateString('fr-BE')} · ${st.weekCount} semaine${st.weekCount>1?'s':''} · ${st.children.length} élèves</p><table><thead><tr><th>Élève</th>${wh}<th>Total</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+  openPrint(html, '📄 Classement complet');
+}
+window.printPodium = function() {
+  const r=ranked(); const top3=r.slice(0,3);
+  const bilan=st.bilans?.[curWeek]||'Aucun bilan généré.';
+  const cards=[[top3[1],2,"#C0C0C0","🥈"],[top3[0],1,"#FFD700","🥇"],[top3[2],3,"#CD7F32","🥉"]].filter(([c])=>c).map(([c,rank,col,medal])=>{
+    const sz=rank===1?85:65;
+    const av=c.photo?`<img src="${c.photo}" style="width:${sz}px;height:${sz}px;border-radius:50%;object-fit:cover;border:3px solid ${col}">`:`<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:#eee;border:3px solid ${col};display:inline-flex;align-items:center;justify-content:center;font-size:24px">👤</div>`;
+    return `<div style="text-align:center;flex:1;padding:4px">${av}<div style="font-size:20px;margin:2px 0">${medal}</div><div style="font-weight:900;font-size:${rank===1?14:12}px">${c.name}</div><div style="font-size:${rank===1?20:16}px;font-weight:900;color:${col}">${c.total} pts</div><div style="background:${col}30;border:2px solid ${col};border-radius:6px 6px 0 0;height:${rank===1?65:45}px;margin-top:5px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:${col}80">${rank}</div></div>`;
+  }).join('');
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;padding:14px;margin:0}h1{text-align:center;font-size:20px;margin:0 0 2px}.sub{text-align:center;color:#888;font-size:11px;margin:0 0 16px}.bilan{background:#fffde7;border:1px solid #ffe082;border-radius:8px;padding:12px;font-size:12px;line-height:1.7;margin-top:14px}.bilan h2{margin:0 0 6px;color:#f57f17;font-size:13px}</style></head><body><h1>🏆 Podium — Semaine ${curWeek}</h1><p class="sub">${new Date().toLocaleDateString('fr-BE')}</p><div style="display:flex;align-items:flex-end;justify-content:center;gap:6px">${cards}</div><div class="bilan"><h2>📋 Bilan semaine ${curWeek}</h2>${bilan}</div></body></html>`;
+  openPrint(html, `🏆 Podium sem. ${curWeek}`);
+}
+function openPrint(html, title) {
+  const modal=document.getElementById('printModal');
+  document.getElementById('printTitle').textContent=title;
+  document.getElementById('printFrame').srcdoc=html;
+  modal.classList.add('open');
+}
+window.closePrintModal = function(e) { if(e.target===document.getElementById('printModal')) document.getElementById('printModal').classList.remove('open'); }
+
+// ── Init ──
+loadFromFirebase();
+</script>
+</body>
+</html>
