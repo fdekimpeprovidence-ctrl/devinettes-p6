@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1E293B">
+<title>Devinettes P6A</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0F172A; color: #F1F5F9; font-family: 'Space Grotesk', system-ui, sans-serif; }
+  @keyframes slideUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes toastIn { from{opacity:0;transform:translate(-50%,8px)} to{opacity:1;transform:translate(-50%,0)} }
+  .slide { animation: slideUp .2s ease both; }
+  select { -webkit-appearance:none; appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24'%3E%3Cpath fill='%2364748B' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 8px center; }
+  ::-webkit-scrollbar { width:3px; height:3px; }
+  ::-webkit-scrollbar-thumb { background:#334155; border-radius:4px; }
+  button:active { transform:scale(.95); }
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
+  textarea { outline:none; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const ELEVES_INIT = ["Adam","Alyia","Bryan","Dua","Ismaël","Laura","Malik","Maria","Nael","Noah","Salimatou","Toby","Victoria","Wissam"];
+const JOURS = ["Lu","Ma","Je","Ve"];
+const JOURS_FULL = {Lu:"Lundi",Ma:"Mardi",Je:"Jeudi",Ve:"Vendredi"};
+
+// Structure points par semaine :
+// { "2026-W38": { dico:{Lu:0,Ma:1,Je:0,Ve:1}, devinette:{Lu:2,Ma:1,Je:0,Ve:2}, enigme:3, bonus:5 } }
+
+function useStorage(key, init) {
+  const [val, setVal] = useState(() => {
+    try { const s=localStorage.getItem(key); return s?JSON.parse(s):(typeof init==="function"?init():init); }
+    catch { return typeof init==="function"?init():init; }
+  });
+  useEffect(()=>{ try{localStorage.setItem(key,JSON.stringify(val));}catch{} },[val,key]);
+  return [val,setVal];
+}
+
+const initEleves = () => ELEVES_INIT.map((name,i)=>({id:i+1,name,photo:null,points:{}}));
+
+function getWeekKey(date=new Date()) {
+  const d=new Date(date); d.setHours(0,0,0,0);
+  d.setDate(d.getDate()+3-(d.getDay()+6)%7);
+  const w=new Date(d.getFullYear(),0,4);
+  const wn=1+Math.round(((d-w)/86400000-3+(w.getDay()+6)%7)/7);
+  return d.getFullYear()+"-W"+String(wn).padStart(2,"0");
+}
+
+// Calculs
+function getDicoWeek(e,wk) { const d=(e.points[wk]||{}).dico||{}; return JOURS.reduce((s,j)=>s+(d[j]||0),0); }
+function getDevWeek(e,wk) { const d=(e.points[wk]||{}).devinette||{}; return JOURS.reduce((s,j)=>s+(d[j]||0),0); }
+function getEnigmeWeek(e,wk) { return (e.points[wk]||{}).enigme||0; }
+function getBonusWeek(e,wk) { return (e.points[wk]||{}).bonus||0; }
+function getWeekTotal(e,wk) { return getDicoWeek(e,wk)+getDevWeek(e,wk)+getEnigmeWeek(e,wk)+getBonusWeek(e,wk); }
+function getDicoTotal(e) { return Object.keys(e.points).reduce((s,wk)=>s+getDicoWeek(e,wk),0); }
+function getDevTotal(e) { return Object.keys(e.points).reduce((s,wk)=>s+getDevWeek(e,wk),0); }
+function getEnigmeTotal(e) { return Object.keys(e.points).reduce((s,wk)=>s+getEnigmeWeek(e,wk),0); }
+function getBonusTotal(e) { return Object.keys(e.points).reduce((s,wk)=>s+getBonusWeek(e,wk),0); }
+function getTotal(e) { return getDicoTotal(e)+getDevTotal(e)+getEnigmeTotal(e)+getBonusTotal(e); }
+
+function App() {
+  const [eleves,setEleves] = useStorage("dev_p6a_v3_eleves", initEleves);
+  const [bilans,setBilans] = useStorage("dev_p6a_v3_bilans", {});
+  const [view,setView]     = useState("encode");
+  const [catTab,setCatTab] = useState("dico");
+  const [jour,setJour]     = useState(()=>{const d=new Date().getDay();return d===1?"Lu":d===2?"Ma":d===4?"Je":d===5?"Ve":"Lu";});
+  const [rankCat,setRankCat] = useState("total");
+  const [weekKey,setWeekKey] = useState(getWeekKey());
+  const [toast,setToast]   = useState(null);
+  const [bilanLoading,setBilanLoading] = useState(false);
+  const [exportText,setExportText] = useState(null);
+  const importRef = useRef(null);
+  const photoRefs = useRef({});
+
+  const showToast = msg => { setToast(msg); setTimeout(()=>setToast(null),2500); };
+  const allWeeks = [...new Set([weekKey,...eleves.flatMap(e=>Object.keys(e.points))])].sort().reverse();
+
+  const rankedBy = (cat) => [...eleves].map(e=>({...e,score:
+    cat==="total"?getTotal(e):cat==="dico"?getDicoTotal(e):cat==="devinette"?getDevTotal(e):cat==="enigme"?getEnigmeTotal(e):getBonusTotal(e)
+  })).sort((a,b)=>b.score-a.score);
+
+  // Mutations
+  const setDico = (id,j,val) => {
+    const n=val?1:0;
+    setEleves(prev=>prev.map(e=>{
+      if(e.id!==id) return e;
+      const wk={...(e.points[weekKey]||{})};
+      wk.dico={...(wk.dico||{})}; wk.dico[j]=n;
+      return {...e,points:{...e.points,[weekKey]:wk}};
+    }));
+  };
+
+  const setDev = (id,j,val) => {
+    const n=Math.max(0,Math.min(2,parseInt(val)||0));
+    setEleves(prev=>prev.map(e=>{
+      if(e.id!==id) return e;
+      const wk={...(e.points[weekKey]||{})};
+      wk.devinette={...(wk.devinette||{})}; wk.devinette[j]=n;
+      return {...e,points:{...e.points,[weekKey]:wk}};
+    }));
+  };
+
+  const setEnigme = (id,val) => {
+    const n=Math.max(0,Math.min(4,parseInt(val)||0));
+    setEleves(prev=>prev.map(e=>{
+      if(e.id!==id) return e;
+      const wk={...(e.points[weekKey]||{})}; wk.enigme=n;
+      return {...e,points:{...e.points,[weekKey]:wk}};
+    }));
+  };
+
+  const setBonus = (id,val) => {
+    const n=Math.max(0,parseInt(val)||0);
+    setEleves(prev=>prev.map(e=>{
+      if(e.id!==id) return e;
+      const wk={...(e.points[weekKey]||{})}; wk.bonus=n;
+      return {...e,points:{...e.points,[weekKey]:wk}};
+    }));
+  };
+
+  const handlePhoto = (id,e) => {
+    const file=e.target.files[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const img=new Image();
+      img.onload=()=>{
+        const canvas=document.createElement("canvas");
+        const MAX=200; let w=img.width,h=img.height;
+        if(w>h){if(w>MAX){h=h*MAX/w;w=MAX;}}else{if(h>MAX){w=w*MAX/h;h=MAX;}}
+        canvas.width=w;canvas.height=h;
+        canvas.getContext("2d").drawImage(img,0,0,w,h);
+        setEleves(prev=>prev.map(c=>c.id===id?{...c,photo:canvas.toDataURL("image/jpeg",.7)}:c));
+      };
+      img.src=ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const exportData = () => {
+    const data={eleves,bilans,exportedAt:new Date().toISOString()};
+    const json=JSON.stringify(data,null,2);
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(json).then(()=>showToast("📋 Copié !")).catch(()=>setExportText(json));
+    } else setExportText(json);
+  };
+
+  const importData = e => {
+    const file=e.target.files[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try { const d=JSON.parse(ev.target.result); if(d.eleves)setEleves(d.eleves); if(d.bilans)setBilans(d.bilans); showToast("✅ Import réussi !"); }
+      catch { showToast("❌ Fichier invalide"); }
+    };
+    reader.readAsText(file); e.target.value="";
+  };
+
+  const generateBilan = async () => {
+    setBilanLoading(true);
+    const top=rankedBy("total").slice(0,3);
+    const weekData=eleves.map(e=>({name:e.name,dico:getDicoWeek(e,weekKey),dev:getDevWeek(e,weekKey),enig:getEnigmeWeek(e,weekKey),bonus:getBonusWeek(e,weekKey)}))
+      .filter(x=>x.dico+x.dev+x.enig+x.bonus>0).sort((a,b)=>(b.dico+b.dev+b.enig+b.bonus)-(a.dico+a.dev+a.enig+a.bonus));
+    const prompt="Tu es M. Dekimpe François, instituteur P6A bienveillant. Rédige un bilan de la semaine "+weekKey+" en 5-6 phrases joyeuses.\n"
+      +"Points : "+weekData.map(x=>x.name+" (dico:"+x.dico+", dev:"+x.dev+", énigme:"+x.enig+(x.bonus?", bonus:"+x.bonus:"")+")").join(" | ")+"\n"
+      +"Top 3 général : "+top.map((e,i)=>(i+1)+". "+e.name+" ("+e.score+" pts)").join(", ")+"\n"
+      +"Mentionne les meilleurs, encourage tout le monde, quelques emojis. Réponds directement.";
+    try {
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1024,messages:[{role:"user",content:prompt}]})});
+      const data=JSON.parse(await res.text());
+      if(data.error){setBilans(prev=>({...prev,[weekKey]:JSON.stringify(data.error).includes("exceeded_limit")?"⏳ Limite IA atteinte — réessaie plus tard.":"Erreur : "+JSON.stringify(data.error).slice(0,80)}));}
+      else{setBilans(prev=>({...prev,[weekKey]:data.content&&data.content.map(b=>b.text||"").join("")||""}));}
+    } catch(e){setBilans(prev=>({...prev,[weekKey]:"Erreur réseau : "+e.message}));}
+    setBilanLoading(false);
+  };
+
+  const CATS_INFO = [
+    {id:"dico",label:"📖 Dico",color:"#06B6D4"},
+    {id:"devinette",label:"🎯 Devinette",color:"#8B5CF6"},
+    {id:"enigme",label:"🧩 Énigme",color:"#F59E0B"},
+    {id:"bonus",label:"🎁 Bonus",color:"#10B981"},
+  ];
+
+  const sorted = [...eleves].sort((a,b)=>a.name.localeCompare(b.name,"fr"));
+
+  return (
+    <div style={{minHeight:"100vh",background:"#0F172A",color:"#F1F5F9",fontFamily:"'Space Grotesk',system-ui,sans-serif",paddingBottom:72}}>
+      {toast&&<div style={{position:"fixed",bottom:84,left:"50%",transform:"translateX(-50%)",background:"#1E293B",border:"1px solid #334155",borderRadius:12,padding:"10px 20px",fontWeight:600,fontSize:13,zIndex:999,animation:"toastIn .2s ease",boxShadow:"0 8px 32px rgba(0,0,0,.5)",whiteSpace:"nowrap"}}>{toast}</div>}
+
+      {/* Header */}
+      <div style={{background:"#1E293B",borderBottom:"1px solid #334155",padding:"14px 16px 0",position:"sticky",top:0,zIndex:100}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+          <div style={{width:34,height:34,borderRadius:10,background:"linear-gradient(135deg,#8B5CF6,#06B6D4)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>🎩</div>
+          <div>
+            <div style={{fontWeight:700,fontSize:16}}>Devinettes P6A</div>
+            <div style={{fontSize:11,color:"#64748B"}}>M. François · {eleves.length} élèves · {weekKey}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:0,overflowX:"auto",marginBottom:"-1px"}}>
+          {[["encode","✏️ Encoder"],["classement","🏆 Scores"],["bilan","📋 Bilan"],["config","⚙️"]].map(([v,l])=>(
+            <button key={v} onClick={()=>setView(v)} style={{padding:"9px 14px",background:"transparent",border:"none",borderBottom:view===v?"2px solid #8B5CF6":"2px solid transparent",color:view===v?"#A78BFA":"#64748B",fontWeight:600,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"inherit"}}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ══ ENCODER ══ */}
+      {view==="encode" && (
+        <div style={{padding:14}}>
+          {/* Semaine */}
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:12,overflowX:"auto"}}>
+            <span style={{fontSize:11,color:"#64748B",flexShrink:0}}>📅</span>
+            {allWeeks.slice(0,6).map(wk=>(
+              <button key={wk} onClick={()=>setWeekKey(wk)} style={{padding:"4px 10px",borderRadius:16,border:"none",cursor:"pointer",fontWeight:600,fontSize:11,whiteSpace:"nowrap",fontFamily:"inherit",flexShrink:0,background:weekKey===wk?"#8B5CF6":"#1E293B",color:weekKey===wk?"#fff":"#64748B"}}>{wk}</button>
+            ))}
+            <button onClick={()=>setWeekKey(getWeekKey())} style={{padding:"4px 10px",borderRadius:16,border:"1px dashed #334155",background:"transparent",cursor:"pointer",fontSize:11,color:"#64748B",fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>+ Actuelle</button>
+          </div>
+
+          {/* Catégories */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:12}}>
+            {CATS_INFO.map(c=>(
+              <button key={c.id} onClick={()=>setCatTab(c.id)} style={{padding:"8px 2px",borderRadius:10,border:"2px solid",cursor:"pointer",fontFamily:"inherit",borderColor:catTab===c.id?c.color:"#1E293B",background:catTab===c.id?c.color+"25":"#1E293B",color:catTab===c.id?c.color:"#475569",textAlign:"center",fontSize:10,fontWeight:600}}>
+                <div style={{fontSize:18}}>{c.label.split(" ")[0]}</div>
+                <div style={{fontSize:9,marginTop:1}}>{c.label.split(" ").slice(1).join(" ")}</div>
+              </button>
+            ))}
+          </div>
+
+          {/* Sélecteur jour (dico + devinette) */}
+          {(catTab==="dico"||catTab==="devinette") && (
+            <div style={{display:"flex",gap:6,marginBottom:12}}>
+              {JOURS.map(j=>(
+                <button key={j} onClick={()=>setJour(j)} style={{flex:1,padding:"8px 4px",borderRadius:10,border:"2px solid",cursor:"pointer",fontWeight:700,fontSize:13,fontFamily:"inherit",borderColor:jour===j?(catTab==="dico"?"#06B6D4":"#8B5CF6"):"#334155",background:jour===j?(catTab==="dico"?"#06B6D420":"#8B5CF620"):"transparent",color:jour===j?(catTab==="dico"?"#06B6D4":"#8B5CF6"):"#64748B"}}>
+                  {j}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Description */}
+          <div style={{fontSize:12,marginBottom:12,padding:"7px 12px",borderRadius:8,borderLeft:"3px solid",
+            ...(catTab==="dico"?{color:"#06B6D4",background:"#06B6D412",borderColor:"#06B6D4"}:
+               catTab==="devinette"?{color:"#8B5CF6",background:"#8B5CF612",borderColor:"#8B5CF6"}:
+               catTab==="enigme"?{color:"#F59E0B",background:"#F59E0B12",borderColor:"#F59E0B"}:
+               {color:"#10B981",background:"#10B98112",borderColor:"#10B981"})}}>
+            {catTab==="dico"&&`📖 Dictionnaire — ${JOURS_FULL[jour]} — 0 ou 1 pt`}
+            {catTab==="devinette"&&`🎯 Devinette — ${JOURS_FULL[jour]} — 0, 1 ou 2 pts`}
+            {catTab==="enigme"&&"🧩 Énigme de la semaine — menu déroulant"}
+            {catTab==="bonus"&&"🎁 Points libres — toute occasion"}
+          </div>
+
+          {/* Liste élèves */}
+          <div style={{display:"flex",flexDirection:"column",gap:7}}>
+            {sorted.map((eleve,idx)=>{
+              const dicoJ=(eleve.points[weekKey]||{}).dico||{};
+              const devJ=(eleve.points[weekKey]||{}).devinette||{};
+              const enigme=getEnigmeWeek(eleve,weekKey);
+              const bonus=getBonusWeek(eleve,weekKey);
+              const wkTot=getWeekTotal(eleve,weekKey);
+              const tot=getTotal(eleve);
+
+              return (
+                <div key={eleve.id} className="slide" style={{background:"#1E293B",borderRadius:12,padding:"11px 12px",border:"1px solid #334155",animationDelay:(idx*.02)+"s"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:catTab==="dico"||catTab==="devinette"?8:0}}>
+                    <div style={{width:32,height:32,borderRadius:8,overflow:"hidden",flexShrink:0,border:"1.5px solid #334155",background:"#0F172A",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>
+                      {eleve.photo?<img src={eleve.photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"👤"}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:600,fontSize:14}}>{eleve.name}</div>
+                      <div style={{fontSize:10,color:"#475569"}}>Sem: {wkTot}pt · Total: {tot}pt</div>
+                    </div>
+
+                    {/* Contrôles enigme et bonus en ligne */}
+                    {catTab==="enigme" && (
+                      <select value={enigme} onChange={e=>setEnigme(eleve.id,e.target.value)}
+                        style={{background:"#0F172A",border:"1.5px solid "+(enigme>0?"#F59E0B":"#334155"),borderRadius:9,padding:"6px 24px 6px 8px",color:enigme>0?"#F59E0B":"#64748B",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                        <option value="0">Pas trouvé</option>
+                        <option value="1">4 indices — 1pt</option>
+                        <option value="2">3 indices — 2pts</option>
+                        <option value="3">2 indices — 3pts</option>
+                        <option value="4">1 indice — 4pts</option>
+                      </select>
+                    )}
+
+                    {catTab==="bonus" && (
+                      <div style={{display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+                        <button onClick={()=>setBonus(eleve.id,bonus-1)} style={{width:28,height:28,borderRadius:7,border:"1px solid #334155",background:"transparent",color:"#64748B",cursor:"pointer",fontSize:15,fontWeight:700}}>−</button>
+                        <div style={{width:36,textAlign:"center",fontWeight:800,fontSize:17,color:bonus>0?"#10B981":"#475569"}}>{bonus}</div>
+                        <button onClick={()=>setBonus(eleve.id,bonus+1)} style={{width:28,height:28,borderRadius:7,border:"1px solid #334155",background:bonus>0?"#10B98120":"transparent",color:bonus>0?"#10B981":"#64748B",cursor:"pointer",fontSize:15,fontWeight:700}}>+</button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Grille jours pour dico */}
+                  {catTab==="dico" && (
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5}}>
+                      {JOURS.map(j=>{
+                        const v=dicoJ[j]||0;
+                        const isActive=j===jour;
+                        return (
+                          <button key={j} onClick={()=>setDico(eleve.id,j,!v)}
+                            style={{padding:"6px 2px",borderRadius:8,border:"1.5px solid",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"inherit",textAlign:"center",
+                              borderColor:v?"#06B6D4":isActive?"#334155":"#1E293B",
+                              background:v?"#06B6D425":isActive?"#334155":"transparent",
+                              color:v?"#06B6D4":isActive?"#94A3B8":"#475569"}}>
+                            <div style={{fontSize:9,marginBottom:2}}>{j}</div>
+                            <div>{v?"✓":"—"}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Grille jours pour devinette */}
+                  {catTab==="devinette" && (
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5}}>
+                      {JOURS.map(j=>{
+                        const v=devJ[j]||0;
+                        const isActive=j===jour;
+                        return (
+                          <div key={j} style={{borderRadius:8,border:"1.5px solid",overflow:"hidden",borderColor:v>0?"#8B5CF6":isActive?"#334155":"#1E293B",background:isActive?"#334155":"transparent"}}>
+                            <div style={{fontSize:9,textAlign:"center",padding:"3px 0",color:isActive?"#94A3B8":"#475569",fontWeight:600}}>{j}</div>
+                            <div style={{display:"flex"}}>
+                              {[0,1,2].map(pt=>(
+                                <button key={pt} onClick={()=>setDev(eleve.id,j,pt)}
+                                  style={{flex:1,padding:"5px 0",border:"none",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"inherit",
+                                    background:v===pt?"#8B5CF6":"transparent",color:v===pt?"#fff":"#475569"}}>
+                                  {pt===0?"—":pt}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ══ CLASSEMENT ══ */}
+      {view==="classement" && (
+        <div style={{padding:14}}>
+          <div style={{display:"flex",gap:6,overflowX:"auto",marginBottom:14}}>
+            {[["total","🏆 Total","#F1F5F9"],...CATS_INFO.map(c=>[c.id,c.label,c.color])].map(([id,label,col])=>(
+              <button key={id} onClick={()=>setRankCat(id)} style={{padding:"5px 12px",borderRadius:16,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"inherit",flexShrink:0,
+                background:rankCat===id?(id==="total"?"#F1F5F9":col):"#1E293B",color:rankCat===id?(id==="total"?"#0F172A":"#fff"):"#64748B",whiteSpace:"nowrap"}}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {(()=>{
+            const r=rankedBy(rankCat);
+            const podCols=["#94A3B8","#F59E0B","#CD7F32"];
+            const medals=["🥈","🥇","🥉"];
+            const order=[r[1],r[0],r[2]];
+            const heights=[85,115,65]; const sizes=[58,76,50];
+            const acol=rankCat==="total"?null:CATS_INFO.find(c=>c.id===rankCat)?.color;
+            return (
+              <div>
+                {r.length>=2&&(
+                  <div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:8,marginBottom:20}}>
+                    {order.map((e,i)=>{
+                      if(!e) return <div key={i} style={{flex:1}}/>;
+                      const col=podCols[i],sz=sizes[i];
+                      return (
+                        <div key={e.id} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center"}}>
+                          <div style={{width:sz,height:sz,borderRadius:"50%",overflow:"hidden",border:"2.5px solid "+col,marginBottom:5,boxShadow:"0 0 16px "+col+"40"}}>
+                            {e.photo?<img src={e.photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{width:"100%",height:"100%",background:"#1E293B",display:"flex",alignItems:"center",justifyContent:"center",fontSize:sz*.35}}>👤</div>}
+                          </div>
+                          <div style={{fontSize:i===1?13:11,fontWeight:700,textAlign:"center",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%",padding:"0 4px"}}>{e.name}</div>
+                          <div style={{fontWeight:800,fontSize:i===1?18:14,color:col,marginBottom:5}}>{e.score}<span style={{fontSize:9,color:"#64748B"}}> pt</span></div>
+                          <div style={{width:"100%",height:heights[i],background:col+"20",border:"1px solid "+col+"40",borderRadius:"6px 6px 0 0",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{medals[i]}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {r.map((e,rank)=>{
+                  const barPct=r[0].score>0?(e.score/r[0].score*100):0;
+                  const col=acol||(rank===0?"#F59E0B":rank===1?"#94A3B8":rank===2?"#CD7F32":"#8B5CF6");
+                  return (
+                    <div key={e.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:"#1E293B",borderRadius:10,marginBottom:6,border:"1px solid "+(rank===0?"rgba(245,158,11,.35)":rank===1?"rgba(148,163,184,.2)":rank===2?"rgba(205,127,50,.25)":"#334155")}}>
+                      <div style={{fontSize:rank<3?16:12,minWidth:22,textAlign:"center"}}>{rank===0?"🥇":rank===1?"🥈":rank===2?"🥉":rank+1}</div>
+                      <div style={{width:28,height:28,borderRadius:7,overflow:"hidden",flexShrink:0,background:"#0F172A",border:"1px solid #334155"}}>
+                        {e.photo?<img src={e.photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12}}>👤</div>}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:600,fontSize:13}}>{e.name}</div>
+                        <div style={{height:3,background:"#334155",borderRadius:3,marginTop:4,overflow:"hidden"}}>
+                          <div style={{height:"100%",borderRadius:3,width:barPct+"%",background:col,transition:"width .5s"}}/>
+                        </div>
+                      </div>
+                      <div style={{fontWeight:800,fontSize:17,color:col,minWidth:30,textAlign:"right"}}>{e.score}</div>
+                    </div>
+                  );
+                })}
+
+                {/* Tableau détail */}
+                {rankCat==="total"&&(
+                  <div style={{marginTop:14,background:"#1E293B",borderRadius:12,overflow:"hidden",border:"1px solid #334155"}}>
+                    <div style={{padding:"8px 12px",borderBottom:"1px solid #334155",fontSize:11,fontWeight:700,color:"#64748B"}}>DÉTAIL PAR CATÉGORIE</div>
+                    <div style={{overflowX:"auto"}}>
+                      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                        <thead><tr style={{background:"#0F172A"}}>
+                          <th style={{padding:"6px 10px",textAlign:"left",color:"#64748B",fontWeight:600}}>Élève</th>
+                          {CATS_INFO.map(c=><th key={c.id} style={{padding:"6px 4px",textAlign:"center",color:c.color,fontSize:14}}>{c.label.split(" ")[0]}</th>)}
+                          <th style={{padding:"6px 10px",textAlign:"center",color:"#F1F5F9",fontWeight:700}}>Total</th>
+                        </tr></thead>
+                        <tbody>
+                          {rankedBy("total").map((e,rank)=>{
+                            const vals=[getDicoTotal(e),getDevTotal(e),getEnigmeTotal(e),getBonusTotal(e)];
+                            const cols=["#06B6D4","#8B5CF6","#F59E0B","#10B981"];
+                            return (
+                              <tr key={e.id} style={{borderTop:"1px solid #334155"}}>
+                                <td style={{padding:"5px 10px",fontWeight:600,fontSize:11}}>{["🥇","🥈","🥉"][rank]||(rank+1)+"."} {e.name}</td>
+                                {vals.map((v,i)=><td key={i} style={{padding:"5px 4px",textAlign:"center",color:v>0?cols[i]:"#334155",fontWeight:600}}>{v}</td>)}
+                                <td style={{padding:"5px 10px",textAlign:"center",fontWeight:800,fontSize:13,color:rank===0?"#F59E0B":rank===1?"#94A3B8":rank===2?"#CD7F32":"#8B5CF6"}}>{e.score}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ══ BILAN ══ */}
+      {view==="bilan" && (
+        <div style={{padding:14}}>
+          <div style={{display:"flex",gap:6,overflowX:"auto",marginBottom:14}}>
+            {allWeeks.map(wk=><button key={wk} onClick={()=>setWeekKey(wk)} style={{padding:"4px 10px",borderRadius:16,border:"none",cursor:"pointer",fontWeight:600,fontSize:11,whiteSpace:"nowrap",fontFamily:"inherit",flexShrink:0,background:weekKey===wk?"#8B5CF6":"#1E293B",color:weekKey===wk?"#fff":"#64748B"}}>{wk}</button>)}
+          </div>
+          <div style={{background:"#1E293B",borderRadius:12,padding:14,border:"1px solid #334155",marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+              <div style={{fontWeight:700,fontSize:14}}>📋 {weekKey}</div>
+              <button onClick={generateBilan} disabled={bilanLoading} style={{padding:"7px 12px",borderRadius:9,background:bilanLoading?"#334155":"linear-gradient(135deg,#8B5CF6,#06B6D4)",border:"none",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:bilanLoading?.6:1}}>
+                {bilanLoading?"⏳...":"✨ Générer IA"}
+              </button>
+            </div>
+            <textarea value={bilans[weekKey]||""} onChange={e=>setBilans(prev=>({...prev,[weekKey]:e.target.value}))} placeholder="Écris le bilan ou génère-le avec l'IA..."
+              style={{width:"100%",minHeight:140,background:"#0F172A",border:"1px solid #334155",borderRadius:9,padding:12,fontSize:13,lineHeight:1.75,color:"#F1F5F9",resize:"vertical",fontFamily:"inherit"}}/>
+          </div>
+
+          {/* Résumé semaine */}
+          <div style={{background:"#1E293B",borderRadius:12,padding:14,border:"1px solid #334155"}}>
+            <div style={{fontWeight:700,fontSize:11,color:"#64748B",marginBottom:12,textTransform:"uppercase",letterSpacing:".5px"}}>Résumé — {weekKey}</div>
+
+            {/* Dico par jour */}
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#06B6D4",marginBottom:6}}>📖 Dictionnaire</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+                {JOURS.map(j=>{
+                  const nb=eleves.filter(e=>((e.points[weekKey]||{}).dico||{})[j]===1).length;
+                  return <div key={j} style={{background:"#0F172A",borderRadius:8,padding:"6px",textAlign:"center"}}>
+                    <div style={{fontSize:10,color:"#64748B",marginBottom:2}}>{j}</div>
+                    <div style={{fontWeight:700,color:nb>0?"#06B6D4":"#334155",fontSize:14}}>{nb}</div>
+                  </div>;
+                })}
+              </div>
+            </div>
+
+            {/* Devinette par jour */}
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#8B5CF6",marginBottom:6}}>🎯 Devinette</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+                {JOURS.map(j=>{
+                  const total=eleves.reduce((s,e)=>s+(((e.points[weekKey]||{}).devinette||{})[j]||0),0);
+                  return <div key={j} style={{background:"#0F172A",borderRadius:8,padding:"6px",textAlign:"center"}}>
+                    <div style={{fontSize:10,color:"#64748B",marginBottom:2}}>{j}</div>
+                    <div style={{fontWeight:700,color:total>0?"#8B5CF6":"#334155",fontSize:14}}>{total}pt</div>
+                  </div>;
+                })}
+              </div>
+            </div>
+
+            {/* Énigme + Bonus */}
+            {[["#F59E0B","🧩 Énigme",eleves.filter(e=>getEnigmeWeek(e,weekKey)>0).map(e=>({name:e.name,pts:getEnigmeWeek(e,weekKey)}))],
+              ["#10B981","🎁 Bonus",eleves.filter(e=>getBonusWeek(e,weekKey)>0).map(e=>({name:e.name,pts:getBonusWeek(e,weekKey)}))]
+            ].map(([col,label,actifs])=>(
+              <div key={label} style={{marginBottom:10}}>
+                <div style={{fontSize:12,fontWeight:700,color:col,marginBottom:5}}>{label}</div>
+                {actifs.length===0?<div style={{fontSize:11,color:"#334155",fontStyle:"italic"}}>Aucun point</div>
+                  :actifs.sort((a,b)=>b.pts-a.pts).map(x=><div key={x.name} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"2px 0",color:"#94A3B8"}}><span>{x.name}</span><span style={{color:col,fontWeight:700}}>+{x.pts}pt</span></div>)
+                }
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ══ CONFIG ══ */}
+      {view==="config" && (
+        <div style={{padding:14}}>
+          <div style={{background:"#1E293B",borderRadius:12,padding:14,border:"1px solid #334155",marginBottom:12}}>
+            <div style={{fontWeight:700,fontSize:13,color:"#F59E0B",marginBottom:4}}>📷 Photos — Top 3</div>
+            <div style={{fontSize:11,color:"#64748B",marginBottom:12}}>Seuls les 3 premiers ont une photo.</div>
+            {rankedBy("total").slice(0,3).map((e,rank)=>(
+              <div key={e.id} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
+                <div style={{cursor:"pointer"}} onClick={()=>photoRefs.current[e.id]&&photoRefs.current[e.id].click()}>
+                  <div style={{width:50,height:50,borderRadius:10,overflow:"hidden",border:"2px solid "+["#F59E0B","#94A3B8","#CD7F32"][rank]}}>
+                    {e.photo?<img src={e.photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{width:"100%",height:"100%",background:"#0F172A",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>📷</div>}
+                  </div>
+                  <input ref={el=>photoRefs.current[e.id]=el} type="file" accept="image/*" style={{display:"none"}} onChange={ev=>handlePhoto(e.id,ev)}/>
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:13}}>{["🥇","🥈","🥉"][rank]} {e.name}</div>
+                  <div style={{fontSize:11,color:"#64748B"}}>{e.photo?"✅ Photo":"Toucher pour ajouter"}</div>
+                </div>
+                {e.photo&&<button onClick={()=>setEleves(prev=>prev.map(c=>c.id===e.id?{...c,photo:null}:c))} style={{background:"transparent",color:"#EF4444",border:"1px solid rgba(239,68,68,.3)",borderRadius:7,padding:"4px 9px",cursor:"pointer",fontSize:12,fontWeight:700}}>✕</button>}
+              </div>
+            ))}
+          </div>
+          <div style={{background:"#1E293B",borderRadius:12,padding:14,border:"1px solid #334155",marginBottom:12}}>
+            <div style={{fontWeight:700,fontSize:13,color:"#06B6D4",marginBottom:12}}>💾 Sauvegarde</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <button onClick={exportData} style={{padding:"11px",borderRadius:9,background:"rgba(6,182,212,.08)",color:"#06B6D4",border:"1px solid rgba(6,182,212,.3)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>📋 Copier la sauvegarde</button>
+              {exportText&&(
+                <div>
+                  <div style={{fontSize:11,color:"#64748B",marginBottom:4}}>Sélectionne tout → colle dans Notes :</div>
+                  <textarea readOnly value={exportText} onClick={e=>e.target.select()} style={{width:"100%",height:70,background:"#0F172A",border:"1px solid #06B6D4",borderRadius:7,color:"#06B6D4",fontSize:9,padding:6,resize:"none",fontFamily:"monospace",outline:"none"}}/>
+                  <button onClick={()=>setExportText(null)} style={{background:"transparent",border:"none",color:"#64748B",fontSize:11,cursor:"pointer",marginTop:3}}>Fermer</button>
+                </div>
+              )}
+              <button onClick={()=>importRef.current&&importRef.current.click()} style={{padding:"11px",borderRadius:9,background:"rgba(139,92,246,.08)",color:"#8B5CF6",border:"1px solid rgba(139,92,246,.3)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>⬆️ Importer un fichier</button>
+              <input ref={importRef} type="file" accept=".json" style={{display:"none"}} onChange={importData}/>
+            </div>
+          </div>
+          <div style={{background:"#1E293B",borderRadius:12,padding:14,border:"1px solid rgba(239,68,68,.25)"}}>
+            <div style={{fontSize:11,color:"#64748B",marginBottom:10}}>⚠️ Zone dangereuse</div>
+            <button onClick={()=>{if(window.confirm("Réinitialiser TOUS les points ?"))setEleves(initEleves());}} style={{background:"rgba(239,68,68,.08)",color:"#EF4444",border:"1px solid rgba(239,68,68,.3)",borderRadius:8,padding:"10px 14px",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>🗑️ Réinitialiser tout</button>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom nav */}
+      <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#1E293B",borderTop:"1px solid #334155",display:"flex",zIndex:100,paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
+        {[["encode","✏️","Encoder"],["classement","🏆","Scores"],["bilan","📋","Bilan"],["config","⚙️","Config"]].map(([v,icon,label])=>(
+          <button key={v} onClick={()=>setView(v)} style={{flex:1,padding:"8px 4px 10px",background:"transparent",border:"none",cursor:"pointer",color:view===v?"#A78BFA":"#475569",fontFamily:"inherit",fontSize:10,fontWeight:600}}>
+            <div style={{fontSize:18,marginBottom:1}}>{icon}</div>{label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.render(React.createElement(App), document.getElementById("root"));
+</script>
+</body>
+</html>
